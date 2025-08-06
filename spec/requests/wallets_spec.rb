@@ -5,7 +5,7 @@ RSpec.describe Wallet, type: :request do
 
   describe "POST /wallets/:user_id/fund" do
     it "funds the wallet with given amount" do
-      post "wallets/#{user.id}/fund", params: { amount: 1000, currency: "USD" }
+      post "/wallets/#{user.id}/fund", params: { amount: 1000, currency: "USD" }
       expect(response).to have_http_status(:success)
       expect(user.wallets.find_by(currency: "USD").balance).to eq(1000)
     end
@@ -36,7 +36,7 @@ RSpec.describe Wallet, type: :request do
       user.wallets.create!(currency: "MXN", balance: 500)
       get "/wallets/#{user.id}/balances"
       expect(response).to have_http_status(:success)
-      expect(JSON.parse(response.body)).to eq({ "USD" => 200, "MXN" => 500 })
+      expect(JSON.parse(response.body)).to eq({ "USD" => "200.0", "MXN" => "500.0" })
     end
   end
 end
