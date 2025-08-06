@@ -9,17 +9,7 @@ class WalletsController < ApplicationController
     amount = validate_amount(params[:amount])
     currency = validate_currency(params[:currency])
 
-    wallet = Wallet.for(@user, currency)
-    wallet.balance ||= 0
-    wallet.balance += amount
-    wallet.save!
-
-    @user.wallet_transactions.create!(
-      transaction_type: :fund,
-      currency: wallet.currency,
-      amount: amount
-    )
-
+    wallet = WalletService.fund(user: @user, currency: currency, amount: amount)
     render json: wallet, status: :ok
   rescue ActiveRecord::RecordInvalid => e
     render json: { error: "Validation failed: #{e.message}" }, status: :unprocessable_entity
@@ -32,35 +22,14 @@ class WalletsController < ApplicationController
 
     return render_same_currency_error if from_currency == to_currency
 
-    from_wallet = Wallet.for(@user, from_currency)
-    to_wallet = Wallet.for(@user, to_currency)
+    result = WalletService.convert(
+      user: @user,
+      from_currency: from_currency,
+      to_currency: to_currency,
+      amount: amount
+    )
 
-    # Verificar fondos suficientes
-    from_balance = from_wallet&.balance || 0
-    return render_insufficient_funds(from_currency) if from_balance < amount
-
-    converted = FxService.convert(from_currency, to_currency, amount)
-
-    # Asegurar que ambos wallets existen y tienen balance inicializado
-    from_wallet.balance ||= 0
-    from_wallet.balance -= amount
-
-    to_wallet.balance ||= 0
-    to_wallet.balance += converted
-
-    ActiveRecord::Base.transaction do
-      from_wallet.save!
-      to_wallet.save!
-      @user.wallet_transactions.create!(
-        transaction_type: :convert,
-        from_currency: from_currency,
-        to_currency: to_currency,
-        amount: amount,
-        result_amount: converted
-      )
-    end
-
-    render json: { from: from_wallet, to: to_wallet }, status: :ok
+    render json: result, status: :ok
   rescue ActiveRecord::RecordInvalid => e
     render json: { error: "Transaction failed: #{e.message}" }, status: :unprocessable_entity
   rescue => e
@@ -71,21 +40,7 @@ class WalletsController < ApplicationController
     amount = validate_amount(params[:amount])
     currency = validate_currency(params[:currency])
 
-    wallet = Wallet.for(@user, currency)
-
-    # Verificar que el wallet existe y tiene balance suficiente
-    current_balance = wallet&.balance || 0
-    return render_insufficient_funds(currency) if current_balance < amount
-
-    wallet.balance = current_balance - amount
-    wallet.save!
-
-    @user.wallet_transactions.create!(
-      transaction_type: :withdraw,
-      currency: wallet.currency,
-      amount: amount
-    )
-
+    wallet = WalletService.withdraw(user: @user, currency: currency, amount: amount)
     render json: wallet, status: :ok
   rescue ActiveRecord::RecordInvalid => e
     render json: { error: "Withdrawal failed: #{e.message}" }, status: :unprocessable_entity
