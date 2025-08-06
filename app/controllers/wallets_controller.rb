@@ -2,33 +2,35 @@ class WalletsController < ApplicationController
   before_action :set_user
 
   def fund
-    wallet = @user.wallets.find_or_initialize_by(currency: params[:currency])
+    wallet = Wallet.for(@user, params[:currency])
     wallet.balance ||= 0
-    wallet.balance += params[:amount].to_f
+    wallet.balance += BigDecimal(params[:amount].to_s)
     wallet.save!
     render json: wallet, status: :ok
   end
 
   def convert
-    from = @user.wallets.find_by(currency: params[:from_currency])
-    to = @user.wallets.find_or_initialize_by(currency: params[:to_currency])
-    amount = params[:amount].to_f
-    fx_rate = fx_rate_for(params[:from_currency], params[:to_currency])
-    raise "Insufficient funds" if from.nil? || from.balance < amount
+    amount = BigDecimal(params[:amount].to_s)
+    from_wallet = Wallet.for(@user, params[:from_currency])
+    to_wallet = Wallet.for(@user, params[:to_currency])
 
-    from.balance -= amount
-    to.balance ||= 0
-    to.balance += (amount * fx_rate)
+    raise "Insufficient funds" if from_wallet.balance < amount
 
-    from.save!
-    to.save!
-    render json: { from: from, to: to }, status: :ok
+    converted = FxService.convert(params[:from_currency], params[:to_currency], amount)
+
+    from_wallet.balance -= amount
+    to_wallet.balance ||= 0
+    to_wallet.balance += converted
+
+    from_wallet.save!
+    to_wallet.save!
+    render json: { from: from_wallet, to: to_wallet }, status: :ok
   end
 
   def withdraw
-    wallet = @user.wallets.find_by(currency: params[:currency])
-    amount = params[:amount].to_f
-    raise "Insufficient funds" if wallet.nil? || wallet.balance < amount
+    wallet = Wallet.for(@user, params[:currency])
+    amount = BigDecimal(params[:amount].to_s)
+    raise "Insufficient funds" if wallet.balance < amount
 
     wallet.balance -= amount
     wallet.save!
