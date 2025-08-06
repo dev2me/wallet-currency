@@ -101,13 +101,43 @@ class WalletsController < ApplicationController
   end
 
   def reconciliation
-    balances = @user.wallets.sum(:balance)
-    net = @user.wallet_transactions.sum("CASE WHEN transaction_type = 0 THEN amount WHEN transaction_type = 2 THEN -amount ELSE 0 END")
+    expected_balances = Hash.new(0)
+    # FUND
+    @user.wallet_transactions.fund.group(:currency).sum(:amount).each do |currency, amount|
+      next if currency.blank?
+      expected_balances[currency] += amount
+    end
+
+    # WITHDRAW
+    @user.wallet_transactions.withdraw.group(:currency).sum(:amount).each do |currency, amount|
+      next if currency.blank?
+      expected_balances[currency] -= amount
+    end
+
+    # CONVERT: resta from
+    @user.wallet_transactions.convert.group(:from_currency).sum(:amount).each do |currency, amount|
+      next if currency.blank?
+      expected_balances[currency] -= amount
+    end
+
+    # CONVERT: suma to
+    @user.wallet_transactions.convert.group(:to_currency).sum(:result_amount).each do |currency, amount|
+      next if currency.blank?
+      expected_balances[currency] += amount
+    end
+
+    current_balances = @user.wallets.pluck(:currency, :balance).to_h
+    expected_balances.transform_values! { |v| v.round(2) }
+
+    ok = expected_balances.all? do |currency, expected|
+      current = current_balances[currency].to_f.round(2)
+      expected == current
+    end
 
     render json: {
-      net_funding_minus_withdrawals: net.to_f,
-      current_balance: balances.to_f,
-      ok: net.to_f.round(2) == balances.to_f.round(2)
+      expected_balances: expected_balances,
+      current_balances: current_balances.transform_values { |v| v.to_f.round(2) },
+      ok: ok
     }, status: :ok
   end
 

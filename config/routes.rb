@@ -7,6 +7,8 @@ Rails.application.routes.draw do
       post :convert
       post :withdraw
       get :balances
+      get :transactions
+      get :reconciliation
     end
   end
 end
