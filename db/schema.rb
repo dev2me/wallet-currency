@@ -10,21 +10,35 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_08_06_164641) do
+ActiveRecord::Schema[8.0].define(version: 2025_08_06_181054) do
   create_table "users", force: :cascade do |t|
     t.string "name"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
   end
 
+  create_table "wallet_transactions", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.integer "transaction_type"
+    t.string "from_currency"
+    t.string "to_currency"
+    t.decimal "amount"
+    t.decimal "result_amount"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "currency"
+    t.index ["user_id"], name: "index_wallet_transactions_on_user_id"
+  end
+
   create_table "wallets", force: :cascade do |t|
     t.integer "user_id", null: false
     t.string "currency"
-    t.decimal "balance"
+    t.decimal "balance", precision: 15, scale: 4
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["user_id"], name: "index_wallets_on_user_id"
   end
 
+  add_foreign_key "wallet_transactions", "users"
   add_foreign_key "wallets", "users"
 end

@@ -6,6 +6,12 @@ class WalletsController < ApplicationController
     wallet.balance ||= 0
     wallet.balance += BigDecimal(params[:amount].to_s)
     wallet.save!
+
+    @user.wallet_transactions.create!(
+      transaction_type: :fund,
+      currency: wallet.currency,
+      amount: params[:amount]
+    )
     render json: wallet, status: :ok
   end
 
@@ -22,8 +28,17 @@ class WalletsController < ApplicationController
     to_wallet.balance ||= 0
     to_wallet.balance += converted
 
-    from_wallet.save!
-    to_wallet.save!
+    ActiveRecord::Base.transaction do
+      from_wallet.save!
+      to_wallet.save!
+      @user.wallet_transactions.create!(
+        transaction_type: :convert,
+        from_currency: params[:from_currency],
+        to_currency: params[:to_currency],
+        amount: amount,
+        result_amount: converted
+      )
+    end
     render json: { from: from_wallet, to: to_wallet }, status: :ok
   end
 
@@ -34,12 +49,33 @@ class WalletsController < ApplicationController
 
     wallet.balance -= amount
     wallet.save!
+
+    @user.wallet_transactions.create!(
+      transaction_type: :withdraw,
+      currency: wallet.currency,
+      amount: amount
+    )
     render json: wallet, status: :ok
   end
 
   def balances
     balances = @user.wallets.pluck(:currency, :balance).to_h
     render json: balances, status: :ok
+  end
+
+  def transactions
+    render json: @user.wallet_transactions.order(created_at: :desc)
+  end
+
+  def reconciliation
+    balances = @user.wallets.sum(:balance)
+    net = @user.wallet_transactions.sum("CASE WHEN transaction_type = 0 THEN amount WHEN transaction_type = 2 THEN -amount ELSE 0 END")
+
+    render json: {
+      net_funding_minus_withdrawals: net.to_f,
+      current_balance: balances.to_f,
+      ok: net.to_f.round(2) == balances.to_f.round(2)
+    }
   end
 
   private
